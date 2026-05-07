@@ -441,7 +441,7 @@ Please make sure your code follows the existing style and includes appropriate c
 
 **TUSHAR SATI**  
 📧 tusharsati77@gmail.com.com  
-🌐 [LinkedIn]([https://www.linkedin.com/in/tushar-sati-3720ab242/]) | [GitHub](https://github.com/Tushar-Sati)
+🌐 [LinkedIn](https://www.linkedin.com/in/tushar-sati-3720ab242/) | [GitHub](https://github.com/Tushar-Sati)
 
 ---
 
