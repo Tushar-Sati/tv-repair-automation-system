@@ -2,13 +2,14 @@ import os
 import re
 import logging
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 # Get the root directory (tv-repair-automation)
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
-# Load .env from root directory
-load_dotenv(ROOT_DIR / ".env")
+# Read .env file directly into a dictionary, ignoring OS environment variables
+env_path = str(ROOT_DIR / ".env")
+env_config = dotenv_values(env_path)
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +67,12 @@ class Settings:
     """Configuration settings with validation for Google Sheets integration."""
     
     def __init__(self):
-        self._google_sheet_id = os.getenv("GOOGLE_SHEET_ID", "").strip()
-        self._google_sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Sheet1").strip()
+        # Read from the file dictionary first, fallback to OS env, then fallback to default string
+        file_sheet_id = env_config.get("GOOGLE_SHEET_ID")
+        file_sheet_name = env_config.get("GOOGLE_SHEET_NAME")
+        
+        self._google_sheet_id = (file_sheet_id or os.getenv("GOOGLE_SHEET_ID") or "18BWjmCqX_pH34ns_VCF0XngaXvhcEy4JpxDCahvEaDI").strip()
+        self._google_sheet_name = (file_sheet_name or os.getenv("GOOGLE_SHEET_NAME") or "Sheet1").strip()
         self._google_service_file = str(ROOT_DIR / "google-service-account.json")
         
         # Validate configuration on initialization

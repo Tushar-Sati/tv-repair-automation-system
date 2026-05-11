@@ -13,7 +13,7 @@ app = FastAPI(title="RepairFlow AI API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -82,6 +82,7 @@ def parse_job_row(row: list, index: int) -> dict:
     }
 
 import time
+import threading
 
 # Cache for Google Sheets data to avoid rate limits and speed up responses
 _cache = {
@@ -89,17 +90,20 @@ _cache = {
     "last_fetched": 0
 }
 CACHE_TTL = 15 # seconds
+_cache_lock = threading.Lock()
 
 def get_cached_rows():
     current_time = time.time()
-    if _cache["rows"] is None or (current_time - _cache["last_fetched"]) > CACHE_TTL:
-        _cache["rows"] = sheet_service.get_rows()
-        _cache["last_fetched"] = current_time
+    with _cache_lock:
+        if _cache["rows"] is None or (current_time - _cache["last_fetched"]) > CACHE_TTL:
+            _cache["rows"] = sheet_service.get_rows()
+            _cache["last_fetched"] = current_time
     return _cache["rows"]
 
 def invalidate_cache():
-    _cache["rows"] = None
-    _cache["last_fetched"] = 0
+    with _cache_lock:
+        _cache["rows"] = None
+        _cache["last_fetched"] = 0
 
 @app.get("/api/jobs")
 def get_all_jobs():

@@ -19,37 +19,23 @@ MESSAGE_STATUS_COL = "L"
 class GoogleSheetService:
 
     def __init__(self):
-
-        self._credentials = None
-        self._service = None
+        pass
 
     def _get_credentials(self):
-
-        if self._credentials is None:
-
-            self._credentials = (
-                service_account.Credentials
-                .from_service_account_file(
-                    settings.GOOGLE_SERVICE_FILE,
-                    scopes=SCOPES
-                )
-            )
-
-        return self._credentials
+        # Always load fresh from file — no caching to avoid stale JWT tokens
+        return service_account.Credentials.from_service_account_file(
+            settings.GOOGLE_SERVICE_FILE,
+            scopes=SCOPES
+        )
 
     def _get_service(self):
-
-        if self._service is None:
-
-            credentials = self._get_credentials()
-
-            self._service = build(
-                "sheets",
-                "v4",
-                credentials=credentials
-            )
-
-        return self._service
+        # Always build fresh service with fresh credentials
+        credentials = self._get_credentials()
+        return build(
+            "sheets",
+            "v4",
+            credentials=credentials
+        )
 
     def get_rows(self, sheet_name=None):
 
