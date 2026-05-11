@@ -22,7 +22,20 @@ class GoogleSheetService:
         pass
 
     def _get_credentials(self):
-        # Always load fresh from file — no caching to avoid stale JWT tokens
+        import json
+        
+        # If running on Render, use the environment variable
+        if hasattr(settings, "GOOGLE_CREDENTIALS_JSON") and settings.GOOGLE_CREDENTIALS_JSON:
+            try:
+                creds_dict = json.loads(settings.GOOGLE_CREDENTIALS_JSON)
+                return service_account.Credentials.from_service_account_info(
+                    creds_dict,
+                    scopes=SCOPES
+                )
+            except Exception as e:
+                logger.error(f"Failed to parse GOOGLE_CREDENTIALS_JSON: {e}")
+                
+        # Fallback to local file — always load fresh from file to avoid stale JWT tokens
         return service_account.Credentials.from_service_account_file(
             settings.GOOGLE_SERVICE_FILE,
             scopes=SCOPES

@@ -74,9 +74,14 @@ class Settings:
         self._google_sheet_id = (file_sheet_id or os.getenv("GOOGLE_SHEET_ID") or "18BWjmCqX_pH34ns_VCF0XngaXvhcEy4JpxDCahvEaDI").strip()
         self._google_sheet_name = (file_sheet_name or os.getenv("GOOGLE_SHEET_NAME") or "Sheet1").strip()
         self._google_service_file = str(ROOT_DIR / "google-service-account.json")
+        self._google_credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
         
         # Validate configuration on initialization
         self._validate_configuration()
+    
+    @property
+    def GOOGLE_CREDENTIALS_JSON(self) -> str:
+        return self._google_credentials_json
     
     @property
     def GOOGLE_SHEET_ID(self) -> str:
@@ -105,9 +110,9 @@ class Settings:
             logger.error("GOOGLE_SHEET_NAME is empty or not set in .env")
             raise ValueError("GOOGLE_SHEET_NAME must be set in .env")
         
-        # Validate service account file exists
-        if not Path(self._google_service_file).exists():
-            logger.error(f"Service account file not found: {self._google_service_file}")
+        # Validate service account file exists OR JSON string is provided
+        if not Path(self._google_service_file).exists() and not self._google_credentials_json:
+            logger.error(f"Service account file not found and no JSON credential provided.")
             raise FileNotFoundError(f"Service account file not found: {self._google_service_file}")
         
         # Log configuration summary for debugging
