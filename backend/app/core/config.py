@@ -4,7 +4,11 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Get the root directory (tv-repair-automation)
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
+
+# Load .env from root directory
+load_dotenv(ROOT_DIR / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +68,7 @@ class Settings:
     def __init__(self):
         self._google_sheet_id = os.getenv("GOOGLE_SHEET_ID", "").strip()
         self._google_sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Sheet1").strip()
-        self._google_service_file = "google-service-account.json"
+        self._google_service_file = str(ROOT_DIR / "google-service-account.json")
         
         # Validate configuration on initialization
         self._validate_configuration()

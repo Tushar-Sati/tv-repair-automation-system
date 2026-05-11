@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
+# Column references in the Google Sheet (A=1, B=2, ...)
+# K = DELIVER (col 11)  — managed by the team; never written by this script
+# L = MESSAGE_STATUS (col 12) — written ONLY by this script
+DELIVER_COL = "K"
+MESSAGE_STATUS_COL = "L"
+
 
 class GoogleSheetService:
 
@@ -58,7 +64,7 @@ class GoogleSheetService:
             .values()
             .get(
                 spreadsheetId=settings.GOOGLE_SHEET_ID,
-                range=f"{sheet_name}!A:K"
+                range=f"{sheet_name}!A:M"
             )
             .execute(num_retries=1)
         )
@@ -70,19 +76,24 @@ class GoogleSheetService:
         return rows
 
     def mark_message_sent(self, row_number):
-
+        """Write 'SENT' ONLY to the MESSAGE_STATUS column (L).
+        The DELIVER column (K) is managed by the team and must NOT be touched.
+        """
         service = self._get_service()
+
+        # Explicitly target MESSAGE_STATUS column only — never DELIVER column
+        target_range = f"{settings.GOOGLE_SHEET_NAME}!{MESSAGE_STATUS_COL}{row_number}"
 
         service.spreadsheets().values().update(
             spreadsheetId=settings.GOOGLE_SHEET_ID,
-            range=f"{settings.GOOGLE_SHEET_NAME}!K{row_number}",
+            range=target_range,
             valueInputOption="RAW",
             body={
                 "values": [["SENT"]]
             }
         ).execute()
 
-        print(f"Marked SENT in row {row_number}")
+        print(f"Marked SENT in MESSAGE_STATUS column ({MESSAGE_STATUS_COL}{row_number}) — DELIVER column untouched")
 
 
 sheet_service = GoogleSheetService()
