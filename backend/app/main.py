@@ -18,6 +18,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.head("/")
+@app.get("/")
+def health_check():
+    """Simple health check for UptimeRobot"""
+    return {"status": "alive"}
+
+@app.head("/api/debug")
 @app.get("/api/debug")
 def debug_info():
     """Debug endpoint - check sheet connection and raw data"""
