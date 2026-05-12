@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://tv-repair-automation-system.onrender.com/api";
 
 // Bypasses the Ngrok warning screen for API requests
 const defaultHeaders = {
