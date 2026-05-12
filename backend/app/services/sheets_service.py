@@ -19,36 +19,46 @@ MESSAGE_STATUS_COL = "L"
 class GoogleSheetService:
 
     def __init__(self):
-        pass
+        self._credentials = None
+        self._service = None
 
     def _get_credentials(self):
+        if self._credentials:
+            return self._credentials
+            
         import json
         
         # If running on Render, use the environment variable
         if hasattr(settings, "GOOGLE_CREDENTIALS_JSON") and settings.GOOGLE_CREDENTIALS_JSON:
             try:
                 creds_dict = json.loads(settings.GOOGLE_CREDENTIALS_JSON)
-                return service_account.Credentials.from_service_account_info(
+                self._credentials = service_account.Credentials.from_service_account_info(
                     creds_dict,
                     scopes=SCOPES
                 )
+                return self._credentials
             except Exception as e:
                 logger.error(f"Failed to parse GOOGLE_CREDENTIALS_JSON: {e}")
                 
-        # Fallback to local file — always load fresh from file to avoid stale JWT tokens
-        return service_account.Credentials.from_service_account_file(
+        # Fallback to local file
+        self._credentials = service_account.Credentials.from_service_account_file(
             settings.GOOGLE_SERVICE_FILE,
             scopes=SCOPES
         )
+        return self._credentials
 
     def _get_service(self):
-        # Always build fresh service with fresh credentials
+        if self._service:
+            return self._service
+            
         credentials = self._get_credentials()
-        return build(
+        self._service = build(
             "sheets",
             "v4",
-            credentials=credentials
+            credentials=credentials,
+            cache_discovery=False
         )
+        return self._service
 
     def get_rows(self, sheet_name=None):
 
