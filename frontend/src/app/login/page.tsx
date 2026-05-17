@@ -34,10 +34,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background relative flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background relative flex items-center justify-center p-4 overflow-hidden">
       {/* Background Effects */}
       <div className="absolute inset-0 bg-grid-white/[0.02] pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-tr from-blue-500/10 to-purple-500/10 blur-[120px] rounded-full pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] md:w-[800px] md:h-[800px] bg-gradient-to-tr from-blue-500/10 to-purple-500/10 blur-[80px] md:blur-[120px] rounded-full pointer-events-none" />
 
       <motion.div
         initial={{ opacity: 0, y: 20, scale: 0.95 }}
