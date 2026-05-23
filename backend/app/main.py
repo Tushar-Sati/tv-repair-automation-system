@@ -1,11 +1,13 @@
 import time
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+import threading
 
 from app.services.sheets_service import sheet_service
+from app.services.job_parser import get_pending_jobs
 from app.core.config import settings
 
 app = FastAPI(title="RepairFlow AI API")
@@ -13,64 +15,56 @@ app = FastAPI(title="RepairFlow AI API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.head("/")
-@app.get("/")
-def health_check():
-    """Simple health check for UptimeRobot"""
-    return {"status": "alive"}
+# Simple Authentication
+ADMIN_TOKEN = "admin_session_token_xyz123"
 
-@app.head("/api/debug")
-@app.get("/api/debug")
-def debug_info():
-    """Debug endpoint - check sheet connection and raw data"""
-    try:
-        rows = sheet_service.get_rows()
+async def verify_token(authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization Header")
+    if authorization != f"Bearer {ADMIN_TOKEN}":
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return True
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/login")
+def login(req: LoginRequest):
+    print(f"Login attempt: {req.username}")
+    # Supporting both 'password' and 'admin123' for migration/testing
+    if req.username == "admin" and req.password in ["password", "admin123"]:
         return {
-            "status": "ok",
-            "sheet_id": settings.GOOGLE_SHEET_ID,
-            "sheet_name": settings.GOOGLE_SHEET_NAME,
-            "total_rows": len(rows),
-            "header_row": rows[0] if rows else [],
-            "first_data_row": rows[1] if len(rows) > 1 else [],
-            "second_data_row": rows[2] if len(rows) > 2 else [],
+            "success": True,
+            "token": ADMIN_TOKEN,
+            "user": {"name": "Admin"}
         }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
 
-
+# -----------------------------------------------------------------------------
+# JOBS & CUSTOMERS
+# -----------------------------------------------------------------------------
 
 def parse_job_row(row: list, index: int) -> dict:
-    # Confirmed column mapping from debug endpoint:
-    # A(0): DATE, B(1): CUSTOMER_NAME, C(2): JOB_NUMBER, D(3): PHONE_NUMBER
-    # E(4): BRAND, F(5): MODEL_NO, G(6): SERIAL_NO, H(7): SYMPTOMS
-    # I(8): PART_REPLACE, J(9): STATUS, K(10): DELIVER, L(11): MESSAGE_STATUS, M(12): PAYMENT
-    
     def get_col(idx, default=""):
         return str(row[idx]).strip() if len(row) > idx else default
 
     date_received = get_col(0)
-    
-    # Calculate days pending
     days_pending = 0
     try:
         if date_received:
             date_str = date_received.replace("/", "-")
             date_obj = datetime.strptime(date_str, "%d-%m-%Y")
             days_pending = (datetime.now() - date_obj).days
-    except Exception:
-        pass
-
-    deliver_raw = get_col(10).upper()
-    # Treat both YES and SENT as delivered
-    is_delivered = deliver_raw in ("YES", "SENT")
+    except: pass
 
     return {
-        "id": get_col(2),  # Job Number as ID
+        "id": get_col(2),
         "row_number": index + 1,
         "date_received": date_received,
         "customer_name": get_col(1),
@@ -82,29 +76,26 @@ def parse_job_row(row: list, index: int) -> dict:
         "symptoms": get_col(7),
         "part_replacement": get_col(8),
         "status": get_col(9).upper(),
-        "deliver": "YES" if is_delivered else deliver_raw,  # Normalize to YES/NO
+        "deliver": get_col(10).upper(),
         "message_status": get_col(11).upper(),
         "payment": get_col(12),
         "days_pending": max(0, days_pending)
     }
 
-import time
-import threading
-
-# Cache for Google Sheets data to avoid rate limits and speed up responses
-_cache = {
-    "rows": None,
-    "last_fetched": 0
-}
-CACHE_TTL = 15 # seconds
+_cache = {"rows": None, "last_fetched": 0}
+CACHE_TTL = 30
 _cache_lock = threading.Lock()
 
 def get_cached_rows():
     current_time = time.time()
     with _cache_lock:
         if _cache["rows"] is None or (current_time - _cache["last_fetched"]) > CACHE_TTL:
-            _cache["rows"] = sheet_service.get_rows()
-            _cache["last_fetched"] = current_time
+            try:
+                _cache["rows"] = sheet_service.get_rows()
+                _cache["last_fetched"] = current_time
+            except Exception as e:
+                print(f"Sheet error: {e}")
+                if _cache["rows"] is None: return []
     return _cache["rows"]
 
 def invalidate_cache():
@@ -112,114 +103,89 @@ def invalidate_cache():
         _cache["rows"] = None
         _cache["last_fetched"] = 0
 
-@app.get("/api/jobs")
-def get_all_jobs():
+@app.get("/api/customers", dependencies=[Depends(verify_token)])
+@app.get("/api/jobs", dependencies=[Depends(verify_token)])
+def get_jobs():
     rows = get_cached_rows()
-    if not rows:
-        return []
-    
-    jobs = []
-    for i, row in enumerate(rows):
-        if i == 0 or len(row) < 3: # Skip header and empty rows
-            continue
-        jobs.append(parse_job_row(row, i))
-    return jobs
+    if not rows: return []
+    return [parse_job_row(row, i) for i, row in enumerate(rows) if i > 0 and len(row) > 3]
 
-@app.get("/api/jobs/{job_id}")
+@app.get("/api/jobs/{job_id}", dependencies=[Depends(verify_token)])
 def get_job(job_id: str):
-    rows = get_cached_rows()
-    for i, row in enumerate(rows):
-        if i == 0 or len(row) < 3:
-            continue
-        job = parse_job_row(row, i)
-        if job["id"] == job_id:
+    jobs = get_jobs()
+    for job in jobs:
+        if job["id"] == job_id or job["job_number"] == job_id:
             return job
     raise HTTPException(status_code=404, detail="Job not found")
 
-class JobUpdate(BaseModel):
-    status: Optional[str] = None
-    deliver: Optional[str] = None
-    payment: Optional[str] = None
-
-@app.put("/api/jobs/{job_id}")
-def update_job(job_id: str, update: JobUpdate):
+@app.get("/api/pending-messages", dependencies=[Depends(verify_token)])
+def get_pending_messages():
     rows = get_cached_rows()
-    row_idx = -1
-    for i, row in enumerate(rows):
-        if len(row) > 2 and str(row[2]).strip() == job_id:
-            row_idx = i + 1
-            break
-            
-    if row_idx == -1:
-        raise HTTPException(status_code=404, detail="Job not found")
+    if not rows: return []
+    return get_pending_jobs(rows, debug=False)
 
-    service = sheet_service._get_service()
-    
-    if update.status is not None:
-        service.spreadsheets().values().update(
-            spreadsheetId=settings.GOOGLE_SHEET_ID,
-            range=f"{settings.GOOGLE_SHEET_NAME}!J{row_idx}",
-            valueInputOption="RAW",
-            body={"values": [[update.status]]}
-        ).execute()
-        
-    if update.deliver is not None:
-        service.spreadsheets().values().update(
-            spreadsheetId=settings.GOOGLE_SHEET_ID,
-            range=f"{settings.GOOGLE_SHEET_NAME}!K{row_idx}",
-            valueInputOption="RAW",
-            body={"values": [[update.deliver]]}
-        ).execute()
-        
-    if update.payment is not None:
-        service.spreadsheets().values().update(
-            spreadsheetId=settings.GOOGLE_SHEET_ID,
-            range=f"{settings.GOOGLE_SHEET_NAME}!M{row_idx}",
-            valueInputOption="RAW",
-            body={"values": [[update.payment]]}
-        ).execute()
+class SendMessageRequest(BaseModel):
+    row_number: int
 
-    # Invalidate cache after an update so the next fetch gets fresh data
-    invalidate_cache()
-    return {"message": "Updated successfully"}
+@app.post("/api/send-message", dependencies=[Depends(verify_token)])
+def send_message(req: SendMessageRequest):
+    try:
+        sheet_service.mark_message_sent(req.row_number)
+        invalidate_cache()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/analytics/revenue")
-def get_revenue_analytics():
+@app.get("/api/message-history", dependencies=[Depends(verify_token)])
+def get_message_history():
+    jobs = get_jobs()
+    return [j for j in jobs if j["message_status"] == "SENT"]
+
+# -----------------------------------------------------------------------------
+# ANALYTICS
+# -----------------------------------------------------------------------------
+
+@app.get("/api/dashboard-stats", dependencies=[Depends(verify_token)])
+@app.get("/api/analytics/revenue", dependencies=[Depends(verify_token)])
+def get_dashboard_stats():
     rows = get_cached_rows()
-    jobs = []
-    for i, row in enumerate(rows):
-        if i == 0 or len(row) < 3:
-            continue
-        jobs.append(parse_job_row(row, i))
+    if not rows:
+        return {
+            "total_customers": 0, "pending_messages": 0, "sent_messages": 0,
+            "delivered_jobs": 0, "success_rate": 0, "brand_distribution": []
+        }
 
-    total_revenue = 0
-    pending_revenue = 0
-    completed_jobs = 0
+    jobs = [parse_job_row(row, i) for i, row in enumerate(rows) if i > 0 and len(row) > 3]
+    pending = len(get_pending_jobs(rows, debug=False))
+    sent = sum(1 for j in jobs if j["message_status"] == "SENT")
+
     brands = {}
-    
-    for job in jobs:
-        payment = 0
-        try:
-            if job["payment"]:
-                payment = float(job["payment"].replace(",", ""))
-        except:
-            pass
-
-        if job["deliver"] == "YES":
-            total_revenue += payment
-            completed_jobs += 1
-            
-            b = job["brand"].upper() or "UNKNOWN"
-            brands[b] = brands.get(b, 0) + payment
-        elif job["status"] in ["OK", "DIAGNOSING", "WIP"]:
-            pending_revenue += payment
-
-    avg_ticket = total_revenue / completed_jobs if completed_jobs > 0 else 0
+    for j in jobs:
+        b = j["brand"].upper() or "UNKNOWN"
+        brands[b] = brands.get(b, 0) + 1
 
     return {
-        "total_revenue": total_revenue,
-        "pending_revenue": pending_revenue,
-        "completed_jobs": completed_jobs,
-        "average_ticket": avg_ticket,
-        "brand_revenue": [{"name": k, "value": v} for k, v in brands.items() if v > 0]
+        "total_customers": len(jobs),
+        "pending_messages": pending,
+        "sent_messages": sent,
+        "delivered_jobs": sum(1 for j in jobs if j["deliver"] == "YES"),
+        "success_rate": (sent / (sent + pending) * 100) if (sent + pending) > 0 else 0,
+        "brand_distribution": [{"name": k, "value": v} for k, v in brands.items()]
+    }
+
+@app.get("/api/debug")
+def debug_info():
+    return {
+        "sheets_configured": settings.GOOGLE_SHEET_ID is not None,
+        "sheet_id": settings.GOOGLE_SHEET_ID[:5] + "..." if settings.GOOGLE_SHEET_ID else None,
+        "cache_status": "ready" if _cache["rows"] else "empty"
+    }
+
+@app.get("/")
+def health_check():
+    return {
+        "status": "alive",
+        "version": "1.0.2",
+        "endpoints": [route.path for route in app.routes if hasattr(route, 'path')],
+        "deployment_status": "SUCCESSFUL - If you see this, the new code is live."
     }
