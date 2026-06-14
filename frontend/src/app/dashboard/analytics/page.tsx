@@ -2,37 +2,98 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, Legend
+  PieChart, Pie, Cell
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Calendar, Download, TrendingUp, DollarSign, Wallet, CreditCard, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchAnalytics } from "@/lib/api";
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#06b6d4'];
 
+type ChartDatum = {
+  name: string;
+  value: number;
+};
+
+type AnalyticsData = {
+  total_revenue?: number;
+  pending_revenue?: number;
+  average_ticket?: number;
+  completed_jobs?: number;
+  delivered_jobs?: number;
+  total_customers?: number;
+  pending_messages?: number;
+  sent_messages?: number;
+  success_rate?: number;
+  brand_revenue?: ChartDatum[];
+  brand_distribution?: ChartDatum[];
+};
+
 export default function AnalyticsPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const res = await fetchAnalytics();
-      setData(res);
-      setLoading(false);
+      try {
+        const res = await fetchAnalytics();
+        setData(res ?? null);
+        setError(!res);
+      } catch (err) {
+        console.error(err);
+        setData(null);
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, []);
 
-  if (loading || !data) {
-    return <div className="h-full flex items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" /></div>;
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   // Format currency
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);
+  const brandData = data?.brand_revenue ?? data?.brand_distribution ?? [];
+  const totalRevenue = data?.total_revenue ?? 0;
+  const pendingRevenue = data?.pending_revenue ?? 0;
+  const averageTicket = data?.average_ticket ?? 0;
+  const completedJobs = data?.completed_jobs ?? data?.delivered_jobs ?? 0;
+  const hasData = !error && !!data && (
+    brandData.length > 0 ||
+    totalRevenue > 0 ||
+    pendingRevenue > 0 ||
+    averageTicket > 0 ||
+    completedJobs > 0 ||
+    (data?.total_customers ?? 0) > 0 ||
+    (data?.pending_messages ?? 0) > 0 ||
+    (data?.sent_messages ?? 0) > 0
+  );
+
+  if (!hasData) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Card className="glass-card border-white/10 bg-white/5 max-w-md w-full">
+          <CardHeader>
+            <CardTitle className="text-white">No data available</CardTitle>
+            <CardDescription>
+              Analytics could not be loaded or there is no analytics data yet.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-12">
@@ -63,12 +124,12 @@ export default function AnalyticsPage() {
               <div className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center"><DollarSign className="h-4 w-4 text-green-400" /></div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white">{formatCurrency(data.total_revenue)}</div>
+              <div className="text-2xl font-bold text-white">{formatCurrency(totalRevenue)}</div>
               <p className="text-xs text-green-400 mt-1 flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Completed Payments</p>
             </CardContent>
           </Card>
         </motion.div>
-        
+
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
           <Card className="glass-card border-white/10 bg-white/5 relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/5 to-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -77,12 +138,12 @@ export default function AnalyticsPage() {
               <div className="h-8 w-8 rounded-lg bg-yellow-500/10 flex items-center justify-center"><Wallet className="h-4 w-4 text-yellow-400" /></div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white">{formatCurrency(data.pending_revenue)}</div>
+              <div className="text-2xl font-bold text-white">{formatCurrency(pendingRevenue)}</div>
               <p className="text-xs text-yellow-400 mt-1">In progress & Diagnosing</p>
             </CardContent>
           </Card>
         </motion.div>
-        
+
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
           <Card className="glass-card border-white/10 bg-white/5 relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -91,12 +152,12 @@ export default function AnalyticsPage() {
               <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><Activity className="h-4 w-4 text-blue-400" /></div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white">{formatCurrency(data.average_ticket)}</div>
+              <div className="text-2xl font-bold text-white">{formatCurrency(averageTicket)}</div>
               <p className="text-xs text-blue-400 mt-1">Per completed job</p>
             </CardContent>
           </Card>
         </motion.div>
-        
+
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.3 }}>
           <Card className="glass-card border-white/10 bg-white/5 relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -105,7 +166,7 @@ export default function AnalyticsPage() {
               <div className="h-8 w-8 rounded-lg bg-purple-500/10 flex items-center justify-center"><CreditCard className="h-4 w-4 text-purple-400" /></div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white">{data.completed_jobs}</div>
+              <div className="text-2xl font-bold text-white">{completedJobs}</div>
               <p className="text-xs text-purple-400 mt-1">Total volume</p>
             </CardContent>
           </Card>
@@ -125,7 +186,7 @@ export default function AnalyticsPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={data.brand_revenue}
+                      data={brandData}
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
@@ -134,11 +195,11 @@ export default function AnalyticsPage() {
                       dataKey="value"
                       stroke="none"
                     >
-                      {data.brand_revenue.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      {(brandData ?? []).map((entry, index) => (
+                        <Cell key={`${entry?.name ?? "cell"}-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
                       itemStyle={{ color: '#e4e4e7' }}
                       formatter={(value: number) => formatCurrency(value)}
@@ -147,10 +208,10 @@ export default function AnalyticsPage() {
                 </ResponsiveContainer>
               </div>
               <div className="flex flex-wrap justify-center gap-4 mt-2">
-                {data.brand_revenue.map((brand: any, idx: number) => (
-                  <div key={brand.name} className="flex items-center gap-2">
+                {(brandData ?? []).map((brand, idx) => (
+                  <div key={brand?.name ?? `brand-${idx}`} className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></span>
-                    <span className="text-sm text-zinc-400">{brand.name}</span>
+                    <span className="text-sm text-zinc-400">{brand?.name ?? "Unknown"}</span>
                   </div>
                 ))}
               </div>
@@ -168,19 +229,19 @@ export default function AnalyticsPage() {
             <CardContent>
               <div className="h-[300px] w-full mt-4">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.brand_revenue} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <BarChart data={brandData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff10" />
                     <XAxis dataKey="name" stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} dy={10} />
                     <YAxis stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val/1000}k`} />
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
                       itemStyle={{ color: '#e4e4e7' }}
                       cursor={{fill: '#ffffff05'}}
                       formatter={(value: number) => formatCurrency(value)}
                     />
                     <Bar dataKey="value" name="Revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={30}>
-                      {data.brand_revenue.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      {(brandData ?? []).map((entry, index) => (
+                        <Cell key={`${entry?.name ?? "cell"}-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Bar>
                   </BarChart>
