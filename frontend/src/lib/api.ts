@@ -1,8 +1,8 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://tv-repair-automation-system.onrender.com/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+export const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN || "admin_session_token_xyz123";
 
-// Bypasses the Ngrok warning screen for API requests
 const defaultHeaders = {
-  "ngrok-skip-browser-warning": "69420"
+  "Authorization": `Bearer ${ADMIN_TOKEN}`
 };
 
 export async function fetchJobs() {

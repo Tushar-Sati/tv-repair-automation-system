@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Wrench, Lock, User, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ADMIN_TOKEN } from "@/lib/api";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -24,7 +25,7 @@ export default function LoginPage() {
     if (username === "admin" && password === "admin123") {
       // Set cookie with 7-day expiry so middleware can read it immediately
       const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString();
-      document.cookie = `auth_token=admin_session_token_xyz123; path=/; expires=${expires}`;
+      document.cookie = `auth_token=${ADMIN_TOKEN}; path=/; expires=${expires}`;
       // Use href so the browser does a full reload — ensures middleware sees the cookie
       window.location.href = "/dashboard";
     } else {

@@ -14,7 +14,10 @@ app = FastAPI(title="RepairFlow AI API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://tv-repair-automation-system.vercel.app",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -127,12 +130,51 @@ def get_pending_messages():
 class SendMessageRequest(BaseModel):
     row_number: int
 
+class UpdateJobRequest(BaseModel):
+    status: Optional[str] = None
+    deliver: Optional[str] = None
+    payment: Optional[str] = None
+
 @app.post("/api/send-message", dependencies=[Depends(verify_token)])
 def send_message(req: SendMessageRequest):
     try:
         sheet_service.mark_message_sent(req.row_number)
         invalidate_cache()
         return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/jobs/{job_id}", dependencies=[Depends(verify_token)])
+def update_job(job_id: str, req: UpdateJobRequest):
+    """
+    Update STATUS, DELIVER, or PAYMENT columns for a given job.
+    Maps job_id to the correct sheet row by scanning all rows.
+    Only writes columns that are explicitly provided in the request.
+    Never touches columns not in the request.
+    """
+    rows = get_cached_rows()
+    target_row = None
+
+    for i, row in enumerate(rows):
+        if i == 0:
+            continue
+        job_number = str(row[2]).strip() if len(row) > 2 else ""
+        if job_number == job_id:
+            target_row = i + 1
+            break
+
+    if not target_row:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    try:
+        if req.status is not None:
+            sheet_service.update_cell(target_row, "J", req.status)
+        if req.deliver is not None:
+            sheet_service.update_cell(target_row, "K", req.deliver)
+        if req.payment is not None:
+            sheet_service.update_cell(target_row, "M", req.payment)
+        invalidate_cache()
+        return {"status": "updated", "row": target_row}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

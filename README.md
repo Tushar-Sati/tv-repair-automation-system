@@ -18,6 +18,29 @@
 
 </div>
 
+## 🚀 Production Deployment
+
+### Backend (Vercel)
+- Create a new Vercel project from this repository
+- Set Root Directory: `backend`
+- Set Framework Preset: `Other`
+- Add environment variables:
+  - `GOOGLE_SHEET_ID` — your spreadsheet ID
+  - `GOOGLE_SHEET_NAME` — worksheet tab name (e.g. Sheet1)
+  - `GOOGLE_CREDENTIALS_JSON` — full service account JSON as one line
+- Deploy
+
+### Frontend (Vercel)
+- Existing Vercel project — no structural changes
+- Update environment variable:
+  - `NEXT_PUBLIC_API_URL` — set to your backend Vercel URL + /api
+  - `NEXT_PUBLIC_ADMIN_TOKEN` — your admin bearer token
+- Redeploy
+
+### UptimeRobot
+Not needed. The Vercel backend does not sleep.
+The UptimeRobot monitor for Render can be deleted.
+
 ---
 
 ## 📌 Table of Contents

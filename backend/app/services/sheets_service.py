@@ -104,5 +104,19 @@ class GoogleSheetService:
 
         print(f"Marked SENT in MESSAGE_STATUS column ({MESSAGE_STATUS_COL}{row_number}) — DELIVER column untouched")
 
+    def update_cell(self, row_number: int, column: str, value: str):
+        """Write a single value to a specific column in the given row."""
+        service = self._get_service()
+        target_range = f"{settings.GOOGLE_SHEET_NAME}!{column}{row_number}"
+
+        service.spreadsheets().values().update(
+            spreadsheetId=settings.GOOGLE_SHEET_ID,
+            range=target_range,
+            valueInputOption="RAW",
+            body={"values": [[value]]}
+        ).execute()
+
+        print(f"Updated {column}{row_number} = {value!r}")
+
 
 sheet_service = GoogleSheetService()
