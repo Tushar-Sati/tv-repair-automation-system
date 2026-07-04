@@ -63,3 +63,38 @@ export async function fetchAnalytics() {
     return null;
   }
 }
+
+export type WhatsAppSendResult = {
+  success: boolean;
+  sent?: number;
+  failed?: number;
+  duration?: string;
+  error?: string;
+  logs?: string[];
+};
+
+export async function sendWhatsAppUpdates(): Promise<WhatsAppSendResult> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/send-whatsapp`, {
+      method: "POST",
+      headers: defaultHeaders,
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      return {
+        success: false,
+        error: data?.error || data?.detail || "Failed to send WhatsApp updates",
+        logs: data?.logs || [],
+      };
+    }
+
+    return data;
+  } catch (error) {
+    console.error(error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to send WhatsApp updates",
+    };
+  }
+}

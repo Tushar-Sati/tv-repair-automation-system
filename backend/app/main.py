@@ -1,6 +1,11 @@
+import contextlib
+import io
+import sys
 import time
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -143,6 +148,58 @@ def send_message(req: SendMessageRequest):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/send-whatsapp", dependencies=[Depends(verify_token)])
+def send_whatsapp_updates():
+    """
+    Run the existing WhatsApp automation from send_whatsapp.py.
+    The script remains the source of truth for message selection, sending, and
+    sheet updates; this endpoint only wraps it for authenticated web access.
+    """
+    project_root = Path(__file__).resolve().parents[2]
+    backend_root = project_root / "backend"
+
+    for path in (project_root, backend_root):
+        path_str = str(path)
+        if path_str not in sys.path:
+            sys.path.insert(0, path_str)
+
+    log_buffer = io.StringIO()
+    started_at = time.time()
+
+    try:
+        from send_whatsapp import main as run_whatsapp_sender
+
+        with contextlib.redirect_stdout(log_buffer):
+            result = run_whatsapp_sender()
+
+        if not isinstance(result, dict):
+            result = {
+                "success": True,
+                "sent": 0,
+                "failed": 0,
+                "duration": f"{time.time() - started_at:.0f} sec",
+            }
+
+        result.setdefault("success", True)
+        result.setdefault("sent", 0)
+        result.setdefault("failed", 0)
+        result.setdefault("duration", f"{time.time() - started_at:.0f} sec")
+        result["logs"] = [line for line in log_buffer.getvalue().splitlines() if line.strip()]
+
+        invalidate_cache()
+        return result
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(e),
+                "duration": f"{time.time() - started_at:.0f} sec",
+                "logs": [line for line in log_buffer.getvalue().splitlines() if line.strip()],
+            },
+        )
 
 @app.put("/api/jobs/{job_id}", dependencies=[Depends(verify_token)])
 def update_job(job_id: str, req: UpdateJobRequest):
