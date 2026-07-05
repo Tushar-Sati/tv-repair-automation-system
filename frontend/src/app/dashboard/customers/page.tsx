@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { fetchJobs } from "@/lib/api";
+import { ProtectedFinancialValue } from "@/components/revenue/ProtectedFinancialValue";
 
 type Customer = {
   phone: string;
@@ -126,7 +127,9 @@ export default function CustomersPage() {
                   
                   <div className="md:w-32 flex flex-col items-end justify-center pt-4 md:pt-0 border-t md:border-t-0 border-white/10">
                     <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold mb-1">Lifetime Value</p>
-                    <p className="text-xl font-bold text-green-400">₹{customer.totalSpent.toLocaleString()}</p>
+                    <p className="text-xl font-bold text-green-400">
+                      <ProtectedFinancialValue>{`₹${customer.totalSpent.toLocaleString()}`}</ProtectedFinancialValue>
+                    </p>
                   </div>
                 </CardContent>
               </Card>

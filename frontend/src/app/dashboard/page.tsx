@@ -11,6 +11,7 @@ import { Wrench, MonitorPlay, AlertTriangle, CheckCircle2, TrendingUp, DollarSig
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { fetchJobs, fetchAnalytics } from "@/lib/api";
+import { ProtectedFinancialPanel, ProtectedFinancialValue } from "@/components/revenue/ProtectedFinancialValue";
 
 export default function DashboardPage() {
   const [jobs, setJobs] = useState<any[]>([]);
@@ -114,7 +115,9 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white">{formatCurrency(analytics.total_revenue)}</div>
+              <div className="text-2xl font-bold text-white">
+                <ProtectedFinancialValue>{formatCurrency(analytics.total_revenue)}</ProtectedFinancialValue>
+              </div>
               <p className="text-xs text-blue-400 mt-1 flex items-center gap-1">Collected from delivered jobs</p>
             </CardContent>
           </Card>
@@ -175,7 +178,8 @@ export default function DashboardPage() {
               <CardDescription>Total collected vs Pending</CardDescription>
             </CardHeader>
             <CardContent className="pl-2">
-              <div className="h-[300px] w-full flex items-center justify-center flex-col gap-4">
+              <ProtectedFinancialPanel className="h-[300px] w-full">
+                <div className="h-full w-full flex items-center justify-center flex-col gap-4">
                 <div className="text-center space-y-2">
                   <p className="text-sm text-zinc-400 uppercase tracking-widest">Total Collected</p>
                   <p className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
@@ -189,7 +193,8 @@ export default function DashboardPage() {
                     {formatCurrency(analytics.pending_revenue)}
                   </p>
                 </div>
-              </div>
+                </div>
+              </ProtectedFinancialPanel>
             </CardContent>
           </Card>
         </motion.div>

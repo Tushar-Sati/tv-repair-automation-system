@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { fetchJobs, sendWhatsAppUpdates, type WhatsAppSendResult } from "@/lib/api";
+import { ProtectedFinancialValue } from "@/components/revenue/ProtectedFinancialValue";
 
 const whatsappProgressSteps = [
   "Initializing...",
@@ -399,7 +400,7 @@ export default function RepairsQueuePage() {
                               {item.phone_number}
                             </div>
                             <span className="text-xs text-green-400 font-medium">
-                              {item.payment ? `₹${item.payment}` : "Unpaid"}
+                              {item.payment ? <ProtectedFinancialValue>{`₹${item.payment}`}</ProtectedFinancialValue> : "Unpaid"}
                             </span>
                           </div>
                         </Card>
