@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Calendar, Download, TrendingUp, DollarSign, Wallet, CreditCard, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchAnalytics } from "@/lib/api";
+import { RevenueRouteGuard } from "@/components/revenue/RevenueRouteGuard";
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#06b6d4'];
 
@@ -33,6 +34,14 @@ type AnalyticsData = {
 };
 
 export default function AnalyticsPage() {
+  return (
+    <RevenueRouteGuard>
+      <AnalyticsContent />
+    </RevenueRouteGuard>
+  );
+}
+
+function AnalyticsContent() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);

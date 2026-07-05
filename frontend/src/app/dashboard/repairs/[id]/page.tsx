@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { fetchJobById, updateJob } from "@/lib/api";
+import { ProtectedFinancialValue } from "@/components/revenue/ProtectedFinancialValue";
 
 export default function JobDetailsPage() {
   const params = useParams();
@@ -146,7 +147,9 @@ export default function JobDetailsPage() {
                 </div>
                 <div>
                   <p className="text-xs text-zinc-500 uppercase tracking-wider font-semibold mb-1">Payment</p>
-                  <p className="text-green-400 font-bold text-xl">{job.payment ? `₹${job.payment}` : "Unpaid"}</p>
+                  <p className="text-green-400 font-bold text-xl">
+                    {job.payment ? <ProtectedFinancialValue>{`₹${job.payment}`}</ProtectedFinancialValue> : "Unpaid"}
+                  </p>
                 </div>
               </div>
               

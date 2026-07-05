@@ -1,10 +1,12 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, Wrench, BarChart3, Users, Settings, LogOut, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRevenueLock } from "@/components/revenue/RevenueLockContext";
 
 const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -17,10 +19,19 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { requestRevenueUnlock, lockRevenue } = useRevenueLock();
 
   const handleLogout = () => {
+    lockRevenue();
     document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
     router.push("/login");
+  };
+
+  const handleNavClick = (event: MouseEvent, href: string) => {
+    if (href !== "/dashboard/analytics") return;
+
+    event.preventDefault();
+    requestRevenueUnlock(href);
   };
 
   return (
@@ -62,17 +73,15 @@ export function Sidebar() {
                 </Link>
               );
 
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-300 relative overflow-hidden",
-                    isActive
-                      ? "text-white bg-white/10"
-                      : "text-zinc-400 hover:text-white hover:bg-white/5"
-                  )}
-                >
+              const commonClassName = cn(
+                "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-300 relative overflow-hidden",
+                isActive
+                  ? "text-white bg-white/10"
+                  : "text-zinc-400 hover:text-white hover:bg-white/5"
+              );
+
+              const linkContent = (
+                <>
                   {isActive && (
                     <motion.div
                       layoutId="sidebar-active"
@@ -86,6 +95,29 @@ export function Sidebar() {
                   )}
                   <item.icon className={cn("h-5 w-5 shrink-0 z-10", isActive ? "text-blue-400" : "text-zinc-500 group-hover:text-zinc-300")} />
                   <span className="z-10">{item.name}</span>
+                </>
+              );
+
+              if (item.href === "/dashboard/analytics") {
+                return (
+                  <button
+                    key={item.name}
+                    type="button"
+                    onClick={(event) => handleNavClick(event, item.href)}
+                    className={cn(commonClassName, "w-full text-left")}
+                  >
+                    {linkContent}
+                  </button>
+                );
+              }
+
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={commonClassName}
+                >
+                  {linkContent}
                 </Link>
               );
             })}
@@ -116,15 +148,12 @@ export function Sidebar() {
         <nav className="flex items-center justify-around h-16 px-2">
           {navItems.map((item) => {
             const isActive = pathname === item.href || (pathname.startsWith(`${item.href}/`) && item.href !== "/dashboard");
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  "flex flex-col items-center justify-center w-full h-full space-y-1 relative px-1",
-                  isActive ? "text-blue-400" : "text-zinc-500 hover:text-zinc-300"
-                )}
-              >
+            const mobileClassName = cn(
+              "flex flex-col items-center justify-center w-full h-full space-y-1 relative px-1",
+              isActive ? "text-blue-400" : "text-zinc-500 hover:text-zinc-300"
+            );
+            const mobileContent = (
+              <>
                 {isActive && (
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-blue-500 rounded-b-full" />
                 )}
@@ -132,6 +161,29 @@ export function Sidebar() {
                 <span className="text-[10px] font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-full">
                   {item.name === "Revenue Analytics" ? "Analytics" : item.name.split(' ')[0]}
                 </span>
+              </>
+            );
+
+            if (item.href === "/dashboard/analytics") {
+              return (
+                <button
+                  key={item.name}
+                  type="button"
+                  onClick={(event) => handleNavClick(event, item.href)}
+                  className={mobileClassName}
+                >
+                  {mobileContent}
+                </button>
+              );
+            }
+
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={mobileClassName}
+              >
+                {mobileContent}
               </Link>
             );
           })}
