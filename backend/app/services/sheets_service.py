@@ -14,6 +14,7 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 # L = MESSAGE_STATUS (col 12) — written ONLY by this script
 DELIVER_COL = "K"
 MESSAGE_STATUS_COL = "L"
+JOB_RANGE = "A:O"
 
 
 class GoogleSheetService:
@@ -73,7 +74,7 @@ class GoogleSheetService:
             .values()
             .get(
                 spreadsheetId=settings.GOOGLE_SHEET_ID,
-                range=f"{sheet_name}!A:M"
+                range=f"{sheet_name}!{JOB_RANGE}"
             )
             .execute(num_retries=1)
         )

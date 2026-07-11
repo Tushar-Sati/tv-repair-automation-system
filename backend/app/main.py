@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 import threading
 
@@ -42,6 +42,31 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+SheetValue = Union[int, float, str]
+
+class RepairJobResponse(BaseModel):
+    id: str
+    row_number: int
+    date: str
+    date_received: str
+    customer_name: str
+    job_number: str
+    contact: str
+    phone_number: str
+    brand: str
+    model_no: str
+    serial_no: str
+    symptoms: str
+    part_replacement: str
+    status: str
+    delivery: str
+    deliver: str
+    message_status: str
+    payment: SheetValue
+    response: str
+    due: SheetValue
+    days_pending: int
+
 @app.post("/api/login")
 def login(req: LoginRequest):
     print(f"Login attempt: {req.username}")
@@ -58,11 +83,80 @@ def login(req: LoginRequest):
 # JOBS & CUSTOMERS
 # -----------------------------------------------------------------------------
 
-def parse_job_row(row: list, index: int) -> dict:
-    def get_col(idx, default=""):
+EXPECTED_COLUMNS = {
+    "date": 0,
+    "customer_name": 1,
+    "job_number": 2,
+    "contact": 3,
+    "brand": 4,
+    "model_no": 5,
+    "serial_no": 6,
+    "symptoms": 7,
+    "part_replacement": 8,
+    "status": 9,
+    "delivery": 10,
+    "message_status": 11,
+    "payment": 12,
+    "response": 13,
+    "due": 14,
+}
+
+HEADER_ALIASES = {
+    "date": {"date", "date_received", "date received"},
+    "customer_name": {"customer_name", "customer name", "customer"},
+    "job_number": {"job_number", "job number", "job no", "job no.", "job"},
+    "contact": {"contact", "phone", "phone_number", "phone number", "mobile"},
+    "brand": {"brand"},
+    "model_no": {"model_no", "model no", "model no.", "model"},
+    "serial_no": {"serial_no", "serial no", "serial no.", "serial"},
+    "symptoms": {"symptoms", "symptom", "complaint"},
+    "part_replacement": {"part_replacement", "part replacement", "parts"},
+    "status": {"status"},
+    "delivery": {"delivery", "deliver"},
+    "message_status": {"message_status", "message status", "msg status"},
+    "payment": {"payment"},
+    "response": {"response", "responce"},
+    "due": {"due"},
+}
+
+def _normalize_header(value: str) -> str:
+    return " ".join(str(value).strip().lower().replace("_", " ").split())
+
+def build_column_map(header_row: list) -> dict:
+    normalized_headers = {
+        _normalize_header(header): idx
+        for idx, header in enumerate(header_row)
+        if str(header).strip()
+    }
+
+    column_map = EXPECTED_COLUMNS.copy()
+    for field, aliases in HEADER_ALIASES.items():
+        for alias in aliases:
+            normalized_alias = _normalize_header(alias)
+            if normalized_alias in normalized_headers:
+                column_map[field] = normalized_headers[normalized_alias]
+                break
+
+    return column_map
+
+def parse_sheet_value(value: str) -> SheetValue:
+    cleaned = str(value).strip().replace(",", "")
+    if not cleaned:
+        return ""
+    try:
+        numeric = float(cleaned)
+    except ValueError:
+        return str(value).strip()
+    return int(numeric) if numeric.is_integer() else numeric
+
+def parse_job_row(row: list, index: int, column_map: Optional[dict] = None) -> dict:
+    column_map = column_map or EXPECTED_COLUMNS
+
+    def get_field(field: str, default=""):
+        idx = column_map.get(field, EXPECTED_COLUMNS[field])
         return str(row[idx]).strip() if len(row) > idx else default
 
-    date_received = get_col(0)
+    date_received = get_field("date")
     days_pending = 0
     try:
         if date_received:
@@ -72,21 +166,26 @@ def parse_job_row(row: list, index: int) -> dict:
     except: pass
 
     return {
-        "id": get_col(2),
+        "id": get_field("job_number"),
         "row_number": index + 1,
+        "date": date_received,
         "date_received": date_received,
-        "customer_name": get_col(1),
-        "job_number": get_col(2),
-        "phone_number": get_col(3),
-        "brand": get_col(4),
-        "model_no": get_col(5),
-        "serial_no": get_col(6),
-        "symptoms": get_col(7),
-        "part_replacement": get_col(8),
-        "status": get_col(9).upper(),
-        "deliver": get_col(10).upper(),
-        "message_status": get_col(11).upper(),
-        "payment": get_col(12),
+        "customer_name": get_field("customer_name"),
+        "job_number": get_field("job_number"),
+        "contact": get_field("contact"),
+        "phone_number": get_field("contact"),
+        "brand": get_field("brand"),
+        "model_no": get_field("model_no"),
+        "serial_no": get_field("serial_no"),
+        "symptoms": get_field("symptoms"),
+        "part_replacement": get_field("part_replacement"),
+        "status": get_field("status").upper(),
+        "delivery": get_field("delivery").upper(),
+        "deliver": get_field("delivery").upper(),
+        "message_status": get_field("message_status").upper(),
+        "payment": parse_sheet_value(get_field("payment")),
+        "response": get_field("response"),
+        "due": parse_sheet_value(get_field("due")),
         "days_pending": max(0, days_pending)
     }
 
@@ -112,11 +211,12 @@ def invalidate_cache():
         _cache["last_fetched"] = 0
 
 @app.get("/api/customers", dependencies=[Depends(verify_token)])
-@app.get("/api/jobs", dependencies=[Depends(verify_token)])
-def get_jobs():
+@app.get("/api/jobs", response_model=List[RepairJobResponse], dependencies=[Depends(verify_token)])
+def get_jobs() -> List[RepairJobResponse]:
     rows = get_cached_rows()
     if not rows: return []
-    return [parse_job_row(row, i) for i, row in enumerate(rows) if i > 0 and len(row) > 3]
+    column_map = build_column_map(rows[0])
+    return [parse_job_row(row, i, column_map) for i, row in enumerate(rows) if i > 0 and len(row) > 3]
 
 @app.get("/api/jobs/{job_id}", dependencies=[Depends(verify_token)])
 def get_job(job_id: str):
@@ -139,6 +239,8 @@ class UpdateJobRequest(BaseModel):
     status: Optional[str] = None
     deliver: Optional[str] = None
     payment: Optional[str] = None
+    response: Optional[str] = None
+    due: Optional[str] = None
 
 @app.post("/api/send-message", dependencies=[Depends(verify_token)])
 def send_message(req: SendMessageRequest):
@@ -204,7 +306,7 @@ def send_whatsapp_updates():
 @app.put("/api/jobs/{job_id}", dependencies=[Depends(verify_token)])
 def update_job(job_id: str, req: UpdateJobRequest):
     """
-    Update STATUS, DELIVER, or PAYMENT columns for a given job.
+    Update STATUS, DELIVER, PAYMENT, RESPONSE, or DUE columns for a given job.
     Maps job_id to the correct sheet row by scanning all rows.
     Only writes columns that are explicitly provided in the request.
     Never touches columns not in the request.
@@ -230,6 +332,10 @@ def update_job(job_id: str, req: UpdateJobRequest):
             sheet_service.update_cell(target_row, "K", req.deliver)
         if req.payment is not None:
             sheet_service.update_cell(target_row, "M", req.payment)
+        if req.response is not None:
+            sheet_service.update_cell(target_row, "N", req.response)
+        if req.due is not None:
+            sheet_service.update_cell(target_row, "O", req.due)
         invalidate_cache()
         return {"status": "updated", "row": target_row}
     except Exception as e:
@@ -254,7 +360,8 @@ def get_dashboard_stats():
             "delivered_jobs": 0, "success_rate": 0, "brand_distribution": []
         }
 
-    jobs = [parse_job_row(row, i) for i, row in enumerate(rows) if i > 0 and len(row) > 3]
+    column_map = build_column_map(rows[0])
+    jobs = [parse_job_row(row, i, column_map) for i, row in enumerate(rows) if i > 0 and len(row) > 3]
     pending = len(get_pending_jobs(rows, debug=False))
     sent = sum(1 for j in jobs if j["message_status"] == "SENT")
 
