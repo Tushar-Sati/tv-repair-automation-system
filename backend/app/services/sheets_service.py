@@ -10,11 +10,13 @@ logger = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 # Column references in the Google Sheet (A=1, B=2, ...)
-# K = DELIVER (col 11)  — managed by the team; never written by this script
 # L = MESSAGE_STATUS (col 12) — written ONLY by this script
-DELIVER_COL = "K"
+# P = DELIVERY (col 16)
+# Q = DELIVERY_DATE (col 17)
 MESSAGE_STATUS_COL = "L"
-JOB_RANGE = "A:O"
+DELIVERY_COL = "P"
+DELIVERY_DATE_COL = "Q"
+JOB_RANGE = "A:Q"
 
 
 class GoogleSheetService:

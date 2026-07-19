@@ -24,7 +24,7 @@ def get_pending_jobs(rows, debug=True):
         phone_number  = str(row[3]).strip().replace(" ", "")
         brand         = str(row[4]).strip()  if len(row) > 4  else ""
         status        = str(row[9]).strip().upper()  if len(row) > 9  else ""
-        deliver       = str(row[10]).strip().upper() if len(row) > 10 else ""
+        deliver       = str(row[15]).strip().upper() if len(row) > 15 else ""
         message_status= str(row[11]).strip().upper() if len(row) > 11 else ""
 
         if debug:

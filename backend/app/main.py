@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Any
 from datetime import datetime
 import threading
 
@@ -42,8 +42,6 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
-SheetValue = Union[int, float, str]
-
 class RepairJobResponse(BaseModel):
     id: str
     row_number: int
@@ -62,9 +60,10 @@ class RepairJobResponse(BaseModel):
     delivery: str
     deliver: str
     message_status: str
-    payment: SheetValue
+    payment: str
     response: str
-    due: SheetValue
+    due: str
+    delivery_date: Optional[str] = ""
     days_pending: int
 
 @app.post("/api/login")
@@ -94,11 +93,12 @@ EXPECTED_COLUMNS = {
     "symptoms": 7,
     "part_replacement": 8,
     "status": 9,
-    "delivery": 10,
+    "delivery": 15,
     "message_status": 11,
     "payment": 12,
     "response": 13,
     "due": 14,
+    "delivery_date": 16,
 }
 
 HEADER_ALIASES = {
@@ -117,6 +117,7 @@ HEADER_ALIASES = {
     "payment": {"payment"},
     "response": {"response", "responce"},
     "due": {"due"},
+    "delivery_date": {"delivery_date", "delivery date", "delivered on"},
 }
 
 def _normalize_header(value: str) -> str:
@@ -139,15 +140,17 @@ def build_column_map(header_row: list) -> dict:
 
     return column_map
 
-def parse_sheet_value(value: str) -> SheetValue:
-    cleaned = str(value).strip().replace(",", "")
+def parse_amount(value: Any) -> float:
+    cleaned = str(value).strip().replace(",", "").replace("₹", "")
     if not cleaned:
-        return ""
+        return 0.0
     try:
-        numeric = float(cleaned)
+        return float(cleaned)
     except ValueError:
-        return str(value).strip()
-    return int(numeric) if numeric.is_integer() else numeric
+        return 0.0
+
+def today_sheet_date() -> str:
+    return datetime.now().strftime("%d/%m/%Y")
 
 def parse_job_row(row: list, index: int, column_map: Optional[dict] = None) -> dict:
     column_map = column_map or EXPECTED_COLUMNS
@@ -183,9 +186,10 @@ def parse_job_row(row: list, index: int, column_map: Optional[dict] = None) -> d
         "delivery": get_field("delivery").upper(),
         "deliver": get_field("delivery").upper(),
         "message_status": get_field("message_status").upper(),
-        "payment": parse_sheet_value(get_field("payment")),
+        "payment": get_field("payment"),
         "response": get_field("response"),
-        "due": parse_sheet_value(get_field("due")),
+        "due": get_field("due"),
+        "delivery_date": get_field("delivery_date"),
         "days_pending": max(0, days_pending)
     }
 
@@ -241,6 +245,7 @@ class UpdateJobRequest(BaseModel):
     payment: Optional[str] = None
     response: Optional[str] = None
     due: Optional[str] = None
+    delivery_date: Optional[str] = None
 
 @app.post("/api/send-message", dependencies=[Depends(verify_token)])
 def send_message(req: SendMessageRequest):
@@ -306,13 +311,14 @@ def send_whatsapp_updates():
 @app.put("/api/jobs/{job_id}", dependencies=[Depends(verify_token)])
 def update_job(job_id: str, req: UpdateJobRequest):
     """
-    Update STATUS, DELIVER, PAYMENT, RESPONSE, or DUE columns for a given job.
+    Update STATUS, DELIVER, PAYMENT, RESPONSE, DUE, or DELIVERY_DATE columns for a given job.
     Maps job_id to the correct sheet row by scanning all rows.
     Only writes columns that are explicitly provided in the request.
     Never touches columns not in the request.
     """
     rows = get_cached_rows()
     target_row = None
+    target_row_values = None
 
     for i, row in enumerate(rows):
         if i == 0:
@@ -320,6 +326,7 @@ def update_job(job_id: str, req: UpdateJobRequest):
         job_number = str(row[2]).strip() if len(row) > 2 else ""
         if job_number == job_id:
             target_row = i + 1
+            target_row_values = row
             break
 
     if not target_row:
@@ -329,13 +336,20 @@ def update_job(job_id: str, req: UpdateJobRequest):
         if req.status is not None:
             sheet_service.update_cell(target_row, "J", req.status)
         if req.deliver is not None:
-            sheet_service.update_cell(target_row, "K", req.deliver)
+            normalized_deliver = req.deliver.strip().upper()
+            current_deliver = str(target_row_values[15]).strip().upper() if target_row_values and len(target_row_values) > 15 else ""
+            current_delivery_date = str(target_row_values[16]).strip() if target_row_values and len(target_row_values) > 16 else ""
+            sheet_service.update_cell(target_row, "P", req.deliver)
+            if normalized_deliver == "YES" and (not current_delivery_date or current_deliver != "YES"):
+                sheet_service.update_cell(target_row, "Q", req.delivery_date or today_sheet_date())
         if req.payment is not None:
             sheet_service.update_cell(target_row, "M", req.payment)
         if req.response is not None:
             sheet_service.update_cell(target_row, "N", req.response)
         if req.due is not None:
             sheet_service.update_cell(target_row, "O", req.due)
+        if req.delivery_date is not None and req.deliver is None:
+            sheet_service.update_cell(target_row, "Q", req.delivery_date)
         invalidate_cache()
         return {"status": "updated", "row": target_row}
     except Exception as e:
@@ -366,9 +380,29 @@ def get_dashboard_stats():
     sent = sum(1 for j in jobs if j["message_status"] == "SENT")
 
     brands = {}
+    brand_revenue = {}
+    total_revenue = 0.0
+    pending_revenue = 0.0
+    paid_jobs = 0
+    delivery_history = []
     for j in jobs:
         b = j["brand"].upper() or "UNKNOWN"
         brands[b] = brands.get(b, 0) + 1
+        payment = parse_amount(j["payment"])
+        due = parse_amount(j["due"])
+        total_revenue += payment
+        pending_revenue += due
+        if payment > 0:
+            paid_jobs += 1
+            brand_revenue[b] = brand_revenue.get(b, 0.0) + payment
+        if j["delivery_date"]:
+            delivery_history.append({
+                "job_number": j["job_number"],
+                "customer_name": j["customer_name"],
+                "delivery_date": j["delivery_date"],
+                "payment": j["payment"],
+                "due": j["due"],
+            })
 
     return {
         "total_customers": len(jobs),
@@ -376,7 +410,13 @@ def get_dashboard_stats():
         "sent_messages": sent,
         "delivered_jobs": sum(1 for j in jobs if j["deliver"] == "YES"),
         "success_rate": (sent / (sent + pending) * 100) if (sent + pending) > 0 else 0,
-        "brand_distribution": [{"name": k, "value": v} for k, v in brands.items()]
+        "brand_distribution": [{"name": k, "value": v} for k, v in brands.items()],
+        "total_revenue": total_revenue,
+        "pending_revenue": pending_revenue,
+        "average_ticket": (total_revenue / paid_jobs) if paid_jobs else 0,
+        "completed_jobs": sum(1 for j in jobs if j["deliver"] == "YES"),
+        "brand_revenue": [{"name": k, "value": v} for k, v in brand_revenue.items()],
+        "delivery_history": delivery_history,
     }
 
 @app.get("/api/debug")
