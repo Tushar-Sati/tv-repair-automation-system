@@ -1,3 +1,6 @@
+from app.services.sheets_service import FIELD_COLUMN_INDEXES
+
+
 def get_pending_jobs(rows, debug=True):
 
     pending_jobs = []
@@ -23,9 +26,13 @@ def get_pending_jobs(rows, debug=True):
         job_number    = str(row[2]).strip()
         phone_number  = str(row[3]).strip().replace(" ", "")
         brand         = str(row[4]).strip()  if len(row) > 4  else ""
-        status        = str(row[9]).strip().upper()  if len(row) > 9  else ""
-        deliver       = str(row[15]).strip().upper() if len(row) > 15 else ""
-        message_status= str(row[11]).strip().upper() if len(row) > 11 else ""
+        status_idx = FIELD_COLUMN_INDEXES["status"]
+        delivery_idx = FIELD_COLUMN_INDEXES["delivery"]
+        message_status_idx = FIELD_COLUMN_INDEXES["message_status"]
+
+        status        = str(row[status_idx]).strip().upper()  if len(row) > status_idx  else ""
+        deliver       = str(row[delivery_idx]).strip().upper() if len(row) > delivery_idx else ""
+        message_status= str(row[message_status_idx]).strip().upper() if len(row) > message_status_idx else ""
 
         if debug:
             print(f"  [Row {sheet_row}] job={job_number!r}  phone={phone_number!r}({len(phone_number)})  "

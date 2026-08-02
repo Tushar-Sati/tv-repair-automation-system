@@ -1,4 +1,5 @@
 import logging
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -9,14 +10,49 @@ logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# Column references in the Google Sheet (A=1, B=2, ...)
-# L = MESSAGE_STATUS (col 12) — written ONLY by this script
-# P = DELIVERY (col 16)
-# Q = DELIVERY_DATE (col 17)
-MESSAGE_STATUS_COL = "L"
-DELIVERY_COL = "P"
-DELIVERY_DATE_COL = "Q"
-JOB_RANGE = "A:Q"
+
+def column_index(column_letter: str) -> int:
+    """Return the zero-based index for a Google Sheets column letter."""
+    index = 0
+    for char in column_letter.upper():
+        index = index * 26 + (ord(char) - ord("A") + 1)
+    return index - 1
+
+
+# Single source of truth for the current Google Sheet layout.
+# Q is intentionally unused and must never be written by backend code.
+SHEET_COLUMN_LETTERS = {
+    "date": "A",
+    "customer_name": "B",
+    "job_number": "C",
+    "contact": "D",
+    "brand": "E",
+    "model_no": "F",
+    "serial_no": "G",
+    "symptoms": "H",
+    "part_replacement": "I",
+    "status": "J",
+    "delivery": "K",
+    "message_status": "L",
+    "payment": "M",
+    "response": "N",
+    "due": "O",
+    "delivery_date": "P",
+}
+
+FIELD_COLUMN_INDEXES = {
+    field: column_index(column)
+    for field, column in SHEET_COLUMN_LETTERS.items()
+}
+
+STATUS_COL = SHEET_COLUMN_LETTERS["status"]
+DELIVERY_COL = SHEET_COLUMN_LETTERS["delivery"]
+MESSAGE_STATUS_COL = SHEET_COLUMN_LETTERS["message_status"]
+PAYMENT_COL = SHEET_COLUMN_LETTERS["payment"]
+RESPONSE_COL = SHEET_COLUMN_LETTERS["response"]
+DUE_COL = SHEET_COLUMN_LETTERS["due"]
+DELIVERY_DATE_COL = SHEET_COLUMN_LETTERS["delivery_date"]
+JOB_RANGE = "A:P"
 
 
 class GoogleSheetService:
@@ -28,10 +64,10 @@ class GoogleSheetService:
     def _get_credentials(self):
         if self._credentials:
             return self._credentials
-            
+
         import json
-        
-        # If running on Render, use the environment variable
+
+        # If running on Render, use the environment variable.
         if hasattr(settings, "GOOGLE_CREDENTIALS_JSON") and settings.GOOGLE_CREDENTIALS_JSON:
             try:
                 creds_dict = json.loads(settings.GOOGLE_CREDENTIALS_JSON)
@@ -42,8 +78,8 @@ class GoogleSheetService:
                 return self._credentials
             except Exception as e:
                 logger.error(f"Failed to parse GOOGLE_CREDENTIALS_JSON: {e}")
-                
-        # Fallback to local file
+
+        # Fallback to local file.
         self._credentials = service_account.Credentials.from_service_account_file(
             settings.GOOGLE_SERVICE_FILE,
             scopes=SCOPES
@@ -53,7 +89,7 @@ class GoogleSheetService:
     def _get_service(self):
         if self._service:
             return self._service
-            
+
         credentials = self._get_credentials()
         self._service = build(
             "sheets",
@@ -89,11 +125,11 @@ class GoogleSheetService:
 
     def mark_message_sent(self, row_number):
         """Write 'SENT' ONLY to the MESSAGE_STATUS column (L).
-        The DELIVER column (K) is managed by the team and must NOT be touched.
+        The DELIVERY column (K) is managed by job updates and must NOT be touched.
         """
         service = self._get_service()
 
-        # Explicitly target MESSAGE_STATUS column only — never DELIVER column
+        # Explicitly target MESSAGE_STATUS column only - never DELIVERY column.
         target_range = f"{settings.GOOGLE_SHEET_NAME}!{MESSAGE_STATUS_COL}{row_number}"
 
         service.spreadsheets().values().update(
@@ -105,12 +141,17 @@ class GoogleSheetService:
             }
         ).execute()
 
-        print(f"Marked SENT in MESSAGE_STATUS column ({MESSAGE_STATUS_COL}{row_number}) — DELIVER column untouched")
+        print(f"Marked SENT in MESSAGE_STATUS column ({MESSAGE_STATUS_COL}{row_number}) - DELIVERY column untouched")
 
     def update_cell(self, row_number: int, column: str, value: str):
         """Write a single value to a specific column in the given row."""
+        if column.upper() == "Q":
+            raise ValueError("Backend must not write to unused Google Sheets column Q")
+
         service = self._get_service()
         target_range = f"{settings.GOOGLE_SHEET_NAME}!{column}{row_number}"
+
+        print(f"Updating {column}{row_number} = {value}")
 
         service.spreadsheets().values().update(
             spreadsheetId=settings.GOOGLE_SHEET_ID,
@@ -118,8 +159,6 @@ class GoogleSheetService:
             valueInputOption="RAW",
             body={"values": [[value]]}
         ).execute()
-
-        print(f"Updated {column}{row_number} = {value!r}")
 
 
 sheet_service = GoogleSheetService()

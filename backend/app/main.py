@@ -11,7 +11,16 @@ from typing import List, Optional, Any
 from datetime import datetime
 import threading
 
-from app.services.sheets_service import sheet_service
+from app.services.sheets_service import (
+    DELIVERY_COL,
+    DELIVERY_DATE_COL,
+    DUE_COL,
+    FIELD_COLUMN_INDEXES,
+    PAYMENT_COL,
+    RESPONSE_COL,
+    STATUS_COL,
+    sheet_service,
+)
 from app.services.job_parser import get_pending_jobs
 from app.core.config import settings
 
@@ -82,24 +91,7 @@ def login(req: LoginRequest):
 # JOBS & CUSTOMERS
 # -----------------------------------------------------------------------------
 
-EXPECTED_COLUMNS = {
-    "date": 0,
-    "customer_name": 1,
-    "job_number": 2,
-    "contact": 3,
-    "brand": 4,
-    "model_no": 5,
-    "serial_no": 6,
-    "symptoms": 7,
-    "part_replacement": 8,
-    "status": 9,
-    "delivery": 15,
-    "message_status": 11,
-    "payment": 12,
-    "response": 13,
-    "due": 14,
-    "delivery_date": 16,
-}
+EXPECTED_COLUMNS = FIELD_COLUMN_INDEXES
 
 HEADER_ALIASES = {
     "date": {"date", "date_received", "date received"},
@@ -241,6 +233,7 @@ class SendMessageRequest(BaseModel):
 
 class UpdateJobRequest(BaseModel):
     status: Optional[str] = None
+    delivery: Optional[str] = None
     deliver: Optional[str] = None
     payment: Optional[str] = None
     response: Optional[str] = None
@@ -308,6 +301,7 @@ def send_whatsapp_updates():
             },
         )
 
+@app.patch("/api/jobs/{job_id}", dependencies=[Depends(verify_token)])
 @app.put("/api/jobs/{job_id}", dependencies=[Depends(verify_token)])
 def update_job(job_id: str, req: UpdateJobRequest):
     """
@@ -333,23 +327,37 @@ def update_job(job_id: str, req: UpdateJobRequest):
         raise HTTPException(status_code=404, detail="Job not found")
 
     try:
+        requested_delivery = req.deliver if req.deliver is not None else req.delivery
+        payload = req.model_dump(exclude_none=True)
+        print(f"Incoming update payload for job {job_id}: {payload}")
+
         if req.status is not None:
-            sheet_service.update_cell(target_row, "J", req.status)
-        if req.deliver is not None:
-            normalized_deliver = req.deliver.strip().upper()
-            current_deliver = str(target_row_values[15]).strip().upper() if target_row_values and len(target_row_values) > 15 else ""
-            current_delivery_date = str(target_row_values[16]).strip() if target_row_values and len(target_row_values) > 16 else ""
-            sheet_service.update_cell(target_row, "P", req.deliver)
+            sheet_service.update_cell(target_row, STATUS_COL, req.status)
+        if requested_delivery is not None:
+            delivery_idx = EXPECTED_COLUMNS["delivery"]
+            delivery_date_idx = EXPECTED_COLUMNS["delivery_date"]
+            normalized_deliver = requested_delivery.strip().upper()
+            current_deliver = str(target_row_values[delivery_idx]).strip().upper() if target_row_values and len(target_row_values) > delivery_idx else ""
+            current_delivery_date = str(target_row_values[delivery_date_idx]).strip() if target_row_values and len(target_row_values) > delivery_date_idx else ""
+            print(f"Job: {job_id}")
+            print("Writing:")
+            print(f"Column {DELIVERY_COL} = {requested_delivery}")
+            sheet_service.update_cell(target_row, DELIVERY_COL, requested_delivery)
             if normalized_deliver == "YES" and (not current_delivery_date or current_deliver != "YES"):
-                sheet_service.update_cell(target_row, "Q", req.delivery_date or today_sheet_date())
+                delivery_date = req.delivery_date or today_sheet_date()
+                print(f"Column {DELIVERY_DATE_COL} = {delivery_date}")
+                sheet_service.update_cell(target_row, DELIVERY_DATE_COL, delivery_date)
         if req.payment is not None:
-            sheet_service.update_cell(target_row, "M", req.payment)
+            sheet_service.update_cell(target_row, PAYMENT_COL, req.payment)
         if req.response is not None:
-            sheet_service.update_cell(target_row, "N", req.response)
+            sheet_service.update_cell(target_row, RESPONSE_COL, req.response)
         if req.due is not None:
-            sheet_service.update_cell(target_row, "O", req.due)
-        if req.delivery_date is not None and req.deliver is None:
-            sheet_service.update_cell(target_row, "Q", req.delivery_date)
+            sheet_service.update_cell(target_row, DUE_COL, req.due)
+        if req.delivery_date is not None and requested_delivery is None:
+            print(f"Job: {job_id}")
+            print("Writing:")
+            print(f"Column {DELIVERY_DATE_COL} = {req.delivery_date}")
+            sheet_service.update_cell(target_row, DELIVERY_DATE_COL, req.delivery_date)
         invalidate_cache()
         return {"status": "updated", "row": target_row}
     except Exception as e:
